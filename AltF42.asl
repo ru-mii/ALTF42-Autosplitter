@@ -14,6 +14,7 @@ startup
 	vars.Helper.Settings.CreateFromXml("Components/ALTF42.Settings.xml");
 	vars.Helper.GameName = "ALTF4 2 (2024)";
 	vars.Uhara.EnableDebug();
+	//vars.Helper.StartFileLogger("ALTF42_LOG.txt");
 
 	vars.completedSplits = new HashSet<string>();
 	vars.LoadingStatus = 0;
@@ -31,7 +32,7 @@ onStart
 init
 {
 	// default
-	IntPtr GEngine = vars.Helper.ScanRel(3, "48 89 05 ???????? 48 85 c9 74 ?? e8 ???????? 48 8d 4d");
+	IntPtr GEngine = vars.Helper.ScanRel(3, "48 89 05 ???????? 48 85 C9 74 ?? E8 ???????? 48 8D 4D");
 	vars.Helper["cantMove"] = vars.Helper.Make<bool>(GEngine, 0x1080, 0x38, 0x0, 0x30, 0x2E8, 0xB1F);
 	vars.Helper["Level"] = vars.Helper.MakeString(GEngine, 0xB98, 0x20);
 	vars.Helper["Level"].FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull;
@@ -39,9 +40,10 @@ init
 	// uhara
 	var Events = vars.Uhara.CreateTool("UnrealEngine", "Events");
 	vars.Helper["StartLoading"] = vars.Helper.Make<ulong>(Events.FunctionFlag("", "WBP_LoadingScreenMenu_Silence_C", "OnInitialized"));
-	vars.Helper["EndLoading"] = vars.Helper.Make<ulong>(vars.Uhara.CodeHKFlag("48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 41 54 41 55 41 56 41 57 48 83 EC ?? 48 8B 72 ?? 49 8B D8 48 8B 01 4C 8B F2 41 B0 01 48 8B D6 48 8B F9 4C 8B 66 ?? 4C 8B 6E ?? FF 50 ?? 41 B0 01"));
-	vars.Helper["LoadingAdvance"] = vars.Helper.Make<ulong>(GEngine, 0x1080, 0x38, 0x0, 0x78, 0x78, 0x158);
-	vars.Helper["LoadingAdvance"].FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull;
+	vars.Helper["LoadingAdvance"] = vars.Helper.Make<ulong>(Events.InstanceFlag("MovieSceneEvalTimeSystem", "MovieSceneEvalTimeSystem"));
+	vars.Helper["EndLoading"] = vars.Helper.Make<uint>(Events.InstancePtr("MovieSceneEvalTimeSystem", "MovieSceneEvalTimeSystem"), 0x40);
+	vars.Helper["EndLoading"].FailAction = MemoryWatcher.ReadFailAction.SetZeroOrNull;
+	vars.Helper["ProgressBar"] = vars.Helper.Make<float>(Events.InstancePtr("ProgressBar", "LoadingProgressBar"), 0x410);
 }
 
 update
@@ -49,33 +51,35 @@ update
 	vars.Helper.Update();
 	vars.Helper.MapPointers();
 	
+	if (vars.LoadingStatus > 0)
+	{
+		//print(vars.LoadingStatus.ToString() + ". " + current.EndLoading.ToString() + " | " + old.EndLoading.ToString());
+	}
+	
+	// ---------------------------
+	
 	if (current.StartLoading != old.StartLoading && current.StartLoading != 0)
 	{
 		vars.NowLoading = true;
+		vars.LoadingStatus = 0;
 	}
 	
-	if (current.LoadingAdvance == 0 && old.LoadingAdvance != 0)
+	if (current.ProgressBar == 1f && old.ProgressBar < 1f)
 	{
 		vars.LoadingStatus = 1;
 	}
-	
-	if (current.LoadingAdvance != 0 && old.LoadingAdvance == 0 && vars.LoadingStatus == 1)
+
+	if (vars.LoadingStatus == 1 && current.LoadingAdvance != old.LoadingAdvance && current.LoadingAdvance != 0)
 	{
 		vars.LoadingStatus = 2;
 	}
 	
-	if (current.LoadingAdvance != 0 && old.LoadingAdvance != 0 && current.LoadingAdvance != old.LoadingAdvance && vars.LoadingStatus == 1)
+	if (vars.LoadingStatus == 2 && current.EndLoading != 0 && current.EndLoading > old.EndLoading)
 	{
-		vars.LoadingStatus = 2;
-	}
-	
-	if (vars.LoadingStatus == 2 && current.EndLoading != old.EndLoading)
-	{
+		//vars.Log("DISABLED");
 		vars.LoadingStatus = 0;
 		vars.NowLoading = false;
 	}
-	
-	print(vars.LoadingStatus.ToString());
 }
 
 start
